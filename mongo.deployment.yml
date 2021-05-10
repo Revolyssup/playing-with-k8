@@ -26,7 +26,7 @@ spec:
   # persistentVolumeReclaimPolicy: Retain
   storageClassName: local-storage
   local:
-    path: ~/dev/testkube/data # Here is where the Persistent volume will mount on whatever storage its on. In this case,local system.
+    path: /home # Here is where the Persistent volume will mount on whatever storage its on. In this case,local system.
   nodeAffinity:
     required:
       nodeSelectorTerms:
@@ -34,7 +34,7 @@ spec:
           - key: kubernetes.io/hostname
             operator: In 
             values: 
-              - kind
+              - kind-worker
   
 
 ---
@@ -85,7 +85,7 @@ spec:
     matchLabels:
       app: mongo
   serviceName: mongo
-  replicas: 2
+  replicas: 1
   template:
     metadata:
       labels:
