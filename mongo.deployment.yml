@@ -1,0 +1,141 @@
+#first create the template for Persistent Volume - Storage class. Its is like the superclass for PV,they inherit from here
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: local-storage
+provisioner: kubernetes.io/no-provisioner 
+# The reclaim policy applies to the persistent volumes not the storage class itself. 
+# pvs and pvcs that are created using that storage class will inherit the reclaim policy set here.
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer # Donr create PV unitll PVC asks for it first.
+
+---
+#Now create the PV referencing the storage class. # This is static binding. As we are creating PV
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mongo-pv
+spec:
+  capacity:
+    storage: 0.01Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+    # StorageClass has a reclaim policy default so it'll be "inherited" by the PV
+  # persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage
+  local:
+    path: ~/dev/testkube/data # Here is where the Persistent volume will mount on whatever storage its on. In this case,local system.
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/hostname
+            operator: In 
+            values: 
+              - kind
+  
+
+---
+# Now finally we create the claim,which requests the storage class.
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongo-pvc
+spec:
+  storageClassName: local-storage
+  resources:
+    requests:
+      storage: 0.005Gi
+  accessModes:
+    - ReadWriteOnce
+  
+
+
+
+
+---
+
+# Now finally our deployment will reference the PVC,which in turn will request the SC to give some storage from PV.
+# Before that ,create service for port-forwarding later.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo
+spec:
+  selector:
+    app: mongo
+  ports:
+  - port: 27017
+    targetPort: 27017
+
+
+
+---
+
+#this type of deployment indexes the pods and manages them in order.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mystatefulset
+spec:
+  selector:
+    matchLabels:
+      app: mongo
+  serviceName: mongo
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: mongo
+    spec:
+      containers:
+      - name: mongo
+        image: mongo
+        ports:
+        - containerPort: 27017
+        volumeMounts:
+        - name: mongo-volume
+          mountPath: /data/db
+        env:
+          - name: MONGODB_DBNAME
+            valueFrom:
+              configMapKeyRef:
+                key: MONGODB_DBNAME
+                name: mongo-env
+          - name: MONGODB_PASSWORD
+            valueFrom:
+              configMapKeyRef:
+                key: MONGODB_PASSWORD
+                name: mongo-env
+          - name: MONGODB_ROLE
+            valueFrom:
+              configMapKeyRef:
+                key: MONGODB_ROLE
+                name: mongo-env
+          - name: MONGODB_ROOT_PASSWORD
+            valueFrom:
+              configMapKeyRef:
+                key: MONGODB_ROOT_PASSWORD
+                name: mongo-env
+          - name: MONGODB_ROOT_ROLE
+            valueFrom:
+              configMapKeyRef:
+                key: MONGODB_ROOT_ROLE
+                name: mongo-env
+          - name: MONGODB_ROOT_USERNAME
+            valueFrom:
+              configMapKeyRef:
+                key: MONGODB_ROOT_USERNAME
+                name: mongo-env
+          - name: MONGODB_USERNAME
+            valueFrom:
+              configMapKeyRef:
+                key: MONGODB_USERNAME
+                name: mongo-env
+      volumes:
+        - name: mongo-volume
+          persistentVolumeClaim:
+            claimName: mongo-pvc
