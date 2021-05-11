@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-conf
+spec:
+  selector:
+    matchLabels:
+      app: node-conf
+  template:
+    metadata:
+      labels:
+        app: node-conf
+    spec:
+      containers:
+      - name: node-conf
+        image: revoly/node-conf
+        resources:
+        ports:
+        - containerPort: 3000
+        volumeMounts:
+          - name: app-conf-vol
+            mountPath: /etc/config
+
+        env: # this is where we enemies key environmental variable.
+          - name: ENEMIES
+            valueFrom:
+              configMapKeyRef:
+                key: enemies
+                name: app-setting 
+        envFrom: #this loads all environmental variables.
+          - configMapRef:
+              name: app-setting
+      volumes:
+        - name: app-conf-vol
+          configMap:
+            name: app-setting
