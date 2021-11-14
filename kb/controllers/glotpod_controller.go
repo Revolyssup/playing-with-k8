@@ -29,6 +29,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	goglotdevv1alpha1 "revolyssup/goglot-k8s/api/v1alpha1"
+
+	batchv1 "k8s.io/api/batch/v1"
 )
 
 // GlotpodReconciler reconciles a Glotpod object
@@ -55,52 +57,16 @@ func (r *GlotpodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// your logic here
 	pod := &goglotdevv1alpha1.Glotpod{}
-	r.Get(ctx, types.NamespacedName{Name: req.Name, Namespace: req.Namespace}, pod)
-	fmt.Println("REQ IS ", req.String())
-	fmt.Println("THE NAMW IS ", pod.Name)
-	err := r.createPod(ctx, pod)
+	err := r.Get(ctx, types.NamespacedName{Name: req.Name, Namespace: req.Namespace}, pod)
+	if err != nil {
+		return ctrl.Result{}, nil
+	}
+	err = r.createJob(ctx, pod)
 	if err != nil {
 		fmt.Println("loldu ", err.Error())
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
-}
-
-func (r *GlotpodReconciler) createPod(ctx context.Context, pod *goglotdevv1alpha1.Glotpod) error {
-	myPod := &v1.Pod{}
-	// err := r.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, myPod)
-	// if errors.IsNotFound(err) {
-	// 	fmt.Println("BRUH MOMENT")
-	// 	return err
-	// }
-	// if err != nil {
-	// 	fmt.Println("bada BRUH MOMENT")
-	// 	return err
-	// }
-	fmt.Println("YE MILA ", myPod)
-	var script string
-	switch pod.Spec.Language {
-	case "js":
-		script = jsscript
-	}
-	fmt.Println([]string{script, pod.Spec.Input, pod.Spec.Code, "test.js"})
-	myPod = &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: pod.Namespace,
-			Name:      pod.Name,
-		},
-		Spec: v1.PodSpec{
-			Containers: []v1.Container{
-				{
-					Name:    "testcontainer",
-					Image:   "revoly/jsrunner",
-					Command: []string{script, pod.Spec.Input, pod.Spec.Code, "test.js"},
-				},
-			},
-		},
-	}
-	r.Create(ctx, myPod)
-	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -115,3 +81,49 @@ var DEFAULTCOUNT int32 = 1
 const (
 	jsscript = "./runjs.sh"
 )
+
+func (r *GlotpodReconciler) createJob(ctx context.Context, pod *goglotdevv1alpha1.Glotpod) error {
+	myJob := batchv1.Job{}
+	fmt.Println("YE MILA ", pod)
+	var script string
+	switch pod.Spec.Language {
+	case "js":
+		script = jsscript
+	}
+	fmt.Println([]string{script, pod.Spec.Input, pod.Spec.Code, "test.js"})
+	var maxPodCount int32 = 1
+	var maxTimeToCompletion int64 = 2
+	var deleteAfterSeconds int32 = 2
+	myJob = batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: pod.Namespace,
+			Name:      pod.Name,
+		},
+		Spec: batchv1.JobSpec{
+			Parallelism:             &maxPodCount,
+			Completions:             &maxPodCount,
+			ActiveDeadlineSeconds:   &maxTimeToCompletion,
+			TTLSecondsAfterFinished: &deleteAfterSeconds,
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: pod.Namespace,
+					Labels: map[string]string{
+						"name": pod.Name,
+					},
+				},
+				Spec: v1.PodSpec{
+
+					Containers: []v1.Container{
+						{
+							Name:    "testcontainer",
+							Image:   "revoly/jsrunnerv2:oggg",
+							Command: []string{script, pod.Spec.Input, pod.Spec.Code, "test.js"},
+						},
+					},
+					RestartPolicy: "Never",
+				},
+			},
+		},
+	}
+	return r.Create(ctx, &myJob)
+}
